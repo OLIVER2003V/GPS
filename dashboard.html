@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel de Auditoría</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:monospace;background:#0d0d1a;color:#e0e0e0;min-height:100vh}
+    header{background:#1a1a2e;padding:16px 28px;display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #00d4ff}
+    header h1{color:#00d4ff;font-size:1.3rem;letter-spacing:2px}
+    .badge{background:#00d4ff;color:#000;padding:3px 10px;font-size:.75rem;font-weight:bold;border-radius:20px}
+    .stats{display:flex;gap:16px;padding:20px 28px;flex-wrap:wrap}
+    .stat{background:#1a1a2e;border:1px solid #2a2a4e;padding:16px 24px;border-radius:6px;min-width:160px}
+    .stat .num{font-size:2rem;color:#00d4ff;font-weight:bold}
+    .stat .lbl{font-size:.75rem;color:#888;margin-top:4px}
+    .toolbar{padding:0 28px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    input[type=text]{background:#1a1a2e;border:1px solid #2a2a4e;color:#e0e0e0;padding:7px 12px;border-radius:4px;width:220px;font-family:monospace}
+    input[type=text]::placeholder{color:#555}
+    button{padding:7px 16px;border:none;border-radius:4px;cursor:pointer;font-family:monospace;font-size:.85rem}
+    .btn-primary{background:#00d4ff;color:#000;font-weight:bold}
+    .btn-danger{background:#ff4444;color:#fff}
+    .btn-sm{padding:4px 10px;font-size:.75rem}
+    table{width:100%;border-collapse:collapse;font-size:.8rem}
+    th{background:#1a1a2e;color:#00d4ff;padding:10px 14px;text-align:left;border-bottom:2px solid #2a2a4e;position:sticky;top:0}
+    td{padding:9px 14px;border-bottom:1px solid #1a1a2e;vertical-align:top;word-break:break-word;max-width:220px}
+    tr:hover td{background:#1a1a2e}
+    .wrap{padding:0 28px 28px;overflow-x:auto}
+    .ip{color:#00ff88;font-weight:bold}
+    .ts{color:#888;font-size:.72rem}
+    .tag{display:inline-block;padding:2px 7px;border-radius:3px;font-size:.7rem;font-weight:bold}
+    .tag-s{background:#1a3a2e;color:#00ff88;border:1px solid #00ff8855}
+    .tag-b{background:#1a2a3a;color:#00d4ff;border:1px solid #00d4ff55}
+    .ua{color:#aaa;font-size:.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+    #live{width:10px;height:10px;background:#00ff88;border-radius:50%;display:inline-block;animation:pulse 1.4s infinite}
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+    .empty{text-align:center;padding:60px;color:#555}
+    .modal{display:none;position:fixed;inset:0;background:#000a;z-index:100;align-items:center;justify-content:center}
+    .modal.open{display:flex}
+    .modal-box{background:#1a1a2e;border:1px solid #00d4ff;border-radius:8px;padding:24px;max-width:600px;width:90%;max-height:80vh;overflow-y:auto}
+    .modal-box h3{color:#00d4ff;margin-bottom:16px}
+    .drow{display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #2a2a4e;font-size:.82rem}
+    .dkey{color:#888;min-width:150px;flex-shrink:0}
+    .dval{color:#e0e0e0;word-break:break-all}
+    .close-btn{float:right;cursor:pointer;color:#ff4444;font-size:1.2rem;margin-top:-4px}
+  </style>
+</head>
+<body>
+<header>
+  <h1>&#9632; PANEL DE AUDITORIA</h1>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="live"></span>
+    <span style="font-size:.8rem;color:#888">Actualizando cada 5s</span>
+    <span class="badge" id="total-badge">0 registros</span>
+  </div>
+</header>
+
+<div id="aviso" style="display:none;background:#2a0a0a;border:1px solid #ff4444;color:#ff8888;padding:12px 28px;font-size:.85rem">
+  &#9888; <strong>Servidor no detectado.</strong> Abre esta pagina a traves de Flask: <strong>http://localhost:5000/dashboard</strong>
+  &nbsp;|&nbsp; Ejecuta primero: <code style="background:#1a1a2e;padding:2px 6px">python servidor.py</code>
+</div>
+<div class="stats">
+  <div class="stat"><div class="num" id="s-visitas">0</div><div class="lbl">Visitas totales</div></div>
+  <div class="stat"><div class="num" id="s-ips">0</div><div class="lbl">IPs unicas</div></div>
+  <div class="stat"><div class="num" id="s-hoy">0</div><div class="lbl">Hoy</div></div>
+  <div class="stat"><div class="num" id="s-movil">0</div><div class="lbl">Dispositivos moviles</div></div>
+</div>
+
+<div class="toolbar">
+  <input type="text" id="filtro" placeholder="Filtrar por IP, zona horaria...">
+  <button class="btn-primary" onclick="aplicarFiltro()">Filtrar</button>
+  <button class="btn-primary" onclick="exportarCSV()">Exportar CSV</button>
+  <button class="btn-danger" onclick="limpiarRegistros()">Limpiar todo</button>
+</div>
+
+<div class="wrap">
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Timestamp</th><th>IP</th><th>Origen</th>
+        <th>Ubicacion</th><th>ISP / Org</th><th>Mapa</th>
+        <th>Resolucion</th><th>CPU / RAM</th><th>Detalle</th>
+      </tr>
+    </thead>
+    <tbody id="tbody">
+      <tr><td colspan="10" class="empty">Esperando registros...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <span class="close-btn" onclick="cerrar()">&#10005;</span>
+    <h3>Detalle del registro</h3>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script>
+var todos = [];
+var filtroActivo = "";
+
+function fmtTs(iso) {
+  if (!iso) return "—";
+  var d = new Date(iso);
+  return d.toLocaleDateString("es") + " " + d.toLocaleTimeString("es");
+}
+
+function esMovil(ua) {
+  return /mobile|android|iphone|ipad/i.test(ua || "");
+}
+
+function hoyStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function mapsLink(r) {
+  if (r.geo_lat && r.geo_lon)
+    return "<a href='https://maps.google.com/?q=" + r.geo_lat + "," + r.geo_lon + "' target='_blank' style='color:#00ff88'>&#127757; Mapa</a>";
+  if (r.latitud && r.longitud)
+    return "<a href='https://maps.google.com/?q=" + r.latitud + "," + r.longitud + "' target='_blank' style='color:#00d4ff'>&#127757; GPS</a>";
+  return "—";
+}
+
+function renderFila(r, n) {
+  var ua = r.user_agent || "—";
+  var icono = esMovil(ua) ? "MOB" : "PC";
+  var tag = r.origen === "server"
+    ? '<span class="tag tag-s">SERVER</span>'
+    : '<span class="tag tag-b">BROWSER</span>';
+  var vpn = r.geo_proxy_vpn ? '<span style="color:#ff4444;font-size:.7rem"> VPN/PROXY</span>' : "";
+  var mob = r.geo_movil ? '<span style="color:#ffaa00;font-size:.7rem"> MOVIL</span>' : "";
+  var ubicacion = r.geo_ciudad
+    ? (r.geo_ciudad + ", " + r.geo_pais + vpn + mob)
+    : (r.geo_nota || "—");
+  return "<tr>" +
+    "<td style='color:#555'>" + n + "</td>" +
+    "<td class='ts'>" + fmtTs(r.timestamp) + "</td>" +
+    "<td class='ip'>" + (r.ip || "—") + "</td>" +
+    "<td>" + tag + "</td>" +
+    "<td style='color:#aaffaa'>" + ubicacion + "</td>" +
+    "<td>" + (r.geo_isp || r.geo_org || "—") + "</td>" +
+    "<td>" + mapsLink(r) + "</td>" +
+    "<td>" + (r.resolucion || "—") + "</td>" +
+    "<td>" + (r.nucleos_cpu ? r.nucleos_cpu + "c" : "—") + " / " + (r.memoria_gb ? r.memoria_gb + "GB" : "—") + "</td>" +
+    "<td><button class='btn-primary btn-sm' onclick='ver(" + n + ")'>Ver</button></td>" +
+    "</tr>";
+}
+
+function renderTabla(datos) {
+  var tbody = document.getElementById("tbody");
+  if (!datos.length) {
+    tbody.innerHTML = "<tr><td colspan='10' class='empty'>Sin registros aun. Espera que alguien visite la pagina.</td></tr>";
+    return;
+  }
+  var inv = datos.slice().reverse();
+  var html = "";
+  for (var i = 0; i < inv.length; i++) {
+    html += renderFila(inv[i], i + 1);
+  }
+  tbody.innerHTML = html;
+}
+
+function actualizarStats(datos) {
+  var browser = datos.filter(function(r) { return r.origen === "browser"; });
+  var ips = {};
+  datos.forEach(function(r) { if (r.ip) ips[r.ip] = 1; });
+  var hoy = datos.filter(function(r) { return r.timestamp && r.timestamp.startsWith(hoyStr()); });
+  var moviles = datos.filter(function(r) { return esMovil(r.user_agent); });
+  document.getElementById("s-visitas").textContent = browser.length;
+  document.getElementById("s-ips").textContent = Object.keys(ips).length;
+  document.getElementById("s-hoy").textContent = hoy.length;
+  document.getElementById("s-movil").textContent = moviles.length;
+  document.getElementById("total-badge").textContent = datos.length + " registros";
+}
+
+function aplicarFiltro() {
+  filtroActivo = document.getElementById("filtro").value.toLowerCase();
+  var filtrados = todos.filter(function(r) {
+    return JSON.stringify(r).toLowerCase().indexOf(filtroActivo) !== -1;
+  });
+  renderTabla(filtrados);
+}
+
+function ver(n) {
+  var inv = todos.slice().reverse();
+  var r = inv[n - 1];
+
+  var geoKeys   = ["geo_pais","geo_codigo_pais","geo_region","geo_ciudad","geo_cp","geo_lat","geo_lon","geo_maps","geo_zona_horaria","geo_utc_offset","geo_moneda","geo_isp","geo_org","geo_as","geo_as_nombre","geo_movil","geo_proxy_vpn","geo_hosting","geo_nota"];
+  var gpsKeys   = ["latitud","longitud","precision_m","geo_estado"];
+  var devKeys   = ["user_agent","plataforma","idioma","resolucion","profundidad_color","nucleos_cpu","memoria_gb","touch_points","conexion","cookies","online"];
+  var metaKeys  = ["ip","origen","timestamp","hora_local","zona_horaria","referrer","accept_lang","user_agent","referer","dnt","sec_fetch","accept_enc"];
+
+  function bloque(titulo, keys) {
+    var filas = "";
+    keys.forEach(function(k) {
+      if (r[k] === undefined || r[k] === null) return;
+      var val = r[k];
+      if (k === "geo_maps" || (typeof val === "string" && val.startsWith("http")))
+        val = "<a href='" + val + "' target='_blank' style='color:#00d4ff'>" + val + "</a>";
+      if (k === "geo_proxy_vpn" && val)
+        val = "<span style='color:#ff4444;font-weight:bold'>SI — posible VPN o Proxy</span>";
+      filas += "<div class='drow'><span class='dkey'>" + k + "</span><span class='dval'>" + val + "</span></div>";
+    });
+    if (!filas) return "";
+    return "<div style='color:#00d4ff;font-size:.75rem;margin:12px 0 4px;border-bottom:1px solid #2a2a4e;padding-bottom:4px'>" + titulo + "</div>" + filas;
+  }
+
+  var html = bloque("GEOLOCALIZACION IP", geoKeys)
+           + bloque("GPS (si concedido)", gpsKeys)
+           + bloque("DISPOSITIVO / NAVEGADOR", devKeys)
+           + bloque("META / RED", metaKeys);
+
+  // Resto de campos no clasificados
+  var usados = geoKeys.concat(gpsKeys).concat(devKeys).concat(metaKeys);
+  var resto = "";
+  Object.keys(r).forEach(function(k) {
+    if (usados.indexOf(k) === -1 && r[k] !== null && r[k] !== undefined)
+      resto += "<div class='drow'><span class='dkey'>" + k + "</span><span class='dval'>" + r[k] + "</span></div>";
+  });
+  if (resto) html += "<div style='color:#888;font-size:.75rem;margin:12px 0 4px'>OTROS</div>" + resto;
+
+  document.getElementById("modal-content").innerHTML = html;
+  document.getElementById("modal").classList.add("open");
+}
+
+function cerrar() {
+  document.getElementById("modal").classList.remove("open");
+}
+
+function exportarCSV() {
+  if (!todos.length) return;
+  var keys = [];
+  todos.forEach(function(r) {
+    Object.keys(r).forEach(function(k) { if (keys.indexOf(k) === -1) keys.push(k); });
+  });
+  var filas = todos.map(function(r) {
+    return keys.map(function(k) { return JSON.stringify(r[k] !== undefined ? r[k] : ""); }).join(",");
+  });
+  var csv = [keys.join(",")].concat(filas).join("\n");
+  var blob = new Blob([csv], {type: "text/csv"});
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "auditoria_" + hoyStr() + ".csv";
+  a.click();
+}
+
+function limpiarRegistros() {
+  if (!confirm("Eliminar todos los registros?")) return;
+  fetch("/limpiar", {method: "POST"}).then(function() { cargar(); });
+}
+
+function cargar() {
+  fetch("/api/registros")
+    .then(function(r) { return r.json(); })
+    .then(function(datos) {
+      ocultarAviso();
+      todos = datos;
+      actualizarStats(datos);
+      if (filtroActivo) {
+        aplicarFiltro();
+      } else {
+        renderTabla(datos);
+      }
+    })
+    .catch(function() {
+      mostrarAviso();
+    });
+}
+
+function mostrarAviso() {
+  var av = document.getElementById("aviso");
+  if (av) av.style.display = "block";
+  document.getElementById("tbody").innerHTML =
+    "<tr><td colspan='10' class='empty' style='color:#ff6666'>" +
+    "Sin conexion con Flask.<br>" +
+    "Abre esta pagina en <strong style='color:#00d4ff'>http://localhost:5000/dashboard</strong>" +
+    "</td></tr>";
+}
+
+function ocultarAviso() {
+  var av = document.getElementById("aviso");
+  if (av) av.style.display = "none";
+}
+
+document.getElementById("modal").addEventListener("click", function(e) {
+  if (e.target === this) cerrar();
+});
+
+cargar();
+setInterval(cargar, 5000);
+</script>
+</body>
+</html>

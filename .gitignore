@@ -1,0 +1,5 @@
+registros.json
+__pycache__/
+*.pyc
+.env
+.venv/
