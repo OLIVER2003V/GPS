@@ -114,7 +114,7 @@ def limpiar():
     return jsonify({"ok": True})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
+    port = int(os.environ.get("PORT", 7860))
     print("Pagina senuelo -> http://localhost:" + str(port))
     print("Panel control  -> http://localhost:" + str(port) + "/dashboard")
     app.run(debug=False, host="0.0.0.0", port=port)
